@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import patch, Mock
 import pandas as pd
+import requests
 from src.module_1.module_1_meteo_api import (
     validate_response,
     calculate_mean_std,
@@ -50,12 +51,19 @@ class TestCallAPI(unittest.TestCase):
         mock_get.return_value = mock_response
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            # Mocked JSON response
+            "latitude": 40.416775,
+            "longitude": -3.703790,
+            "generationtime_ms": 2.2119,
+            "timezone": "Europe/Madrid",
+            "timezone_abbreviation": "CEST",
+            "daily": {},
+            "daily_units": {},
         }
         params = {
             # Mocked parameters
         }
         result = call_api(params)
+        self.assertIsNotNone(result)
         self.assertEqual(result.status_code, 200)
 
     @patch("src.module_1.module_1_meteo_api.requests.get")
@@ -66,11 +74,83 @@ class TestCallAPI(unittest.TestCase):
         mock_response.status_code = 404
 
         result = call_api({})
-        self.assertEqual(result.status_code, 404)
 
+        self.assertIsNone(result)
 
-def test_main():
-    raise NotImplementedError
+    @patch("src.module_1.module_1_meteo_api.requests.get")
+    def test_call_api_rate_limit_exceeded_then_success(self, mock_get):
+        # Mock the first response as a rate limit error, then a successful response
+        mock_response_rate_limit = Mock()
+        mock_response_rate_limit.raise_for_status.side_effect = (
+            requests.exceptions.HTTPError()
+        )
+        mock_response_rate_limit.status_code = 429
+        mock_response_rate_limit.headers = {
+            "Retry-After": 5
+        }  # Simulate a short retry after period for the test
+
+        mock_response_success = Mock()
+        mock_response_success.status_code = 200
+        mock_response_success.json.return_value = {
+            "latitude": 40.416775,
+            "longitude": -3.703790,
+            "generationtime_ms": 2.2119,
+            "timezone": "Europe/Madrid",
+            "timezone_abbreviation": "CEST",
+            "daily": {},
+            "daily_units": {},
+        }
+
+        mock_get.side_effect = [mock_response_rate_limit, mock_response_success]
+
+        params = {}  # Mocked parameters
+        result = call_api(params)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.status_code, 200)
+
+    @patch("src.module_1.module_1_meteo_api.logging.error")
+    @patch("src.module_1.module_1_meteo_api.requests.get")
+    def test_call_api_connection_error(self, mock_get, mock_log_error):
+        # Mock a connection error
+        mock_get.side_effect = requests.exceptions.ConnectionError()
+
+        params = {}  # Mocked parameters
+        result = call_api(params)
+
+        self.assertIsNone(result)
+        # Assert that logging.error was called at least once
+        self.assertTrue(mock_log_error.called, "Expected logging.error to be called")
+        # Check if any of the calls to logging.error start with "Connection error:"
+        error_message_starts_correctly = any(
+            call_arg[0][0].startswith("Connection error:")
+            for call_arg in mock_log_error.call_args_list
+        )
+        self.assertTrue(
+            error_message_starts_correctly,
+            "No log message starts with 'Connection error:'",
+        )
+
+    @patch("src.module_1.module_1_meteo_api.logging.error")
+    @patch("src.module_1.module_1_meteo_api.requests.get")
+    def test_call_api_timeout(self, mock_get, mock_log_error):
+        # Mock a timeout error
+        mock_get.side_effect = requests.exceptions.Timeout()
+
+        params = {}  # Mocked parameters
+        result = call_api(params)
+
+        self.assertIsNone(result)
+
+        self.assertTrue(mock_log_error.called, "Expected logging.error to be called")
+        error_message_starts_correctly = any(
+            call_arg[0][0].startswith("Timeout error:")
+            for call_arg in mock_log_error.call_args_list
+        )
+        self.assertTrue(
+            error_message_starts_correctly,
+            "No log message starts with 'Timeout error:'",
+        )
 
 
 if __name__ == "__main__":

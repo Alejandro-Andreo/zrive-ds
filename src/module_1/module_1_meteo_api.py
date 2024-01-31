@@ -1,9 +1,9 @@
-import pandas as pd
-import numpy as np
-import requests
-import matplotlib.pyplot as plt
-import time
 import logging
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import requests
+import time
 from requests.models import Response
 
 
@@ -25,7 +25,7 @@ MODELS = [
 ]
 MAX_CALL_ATTEMPTS = 50
 
-# Logging configuration
+
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
@@ -70,10 +70,11 @@ def call_api(params: dict):
     while call_attempts < MAX_CALL_ATTEMPTS:
         try:
             response = requests.get(API_URL, params=params)
-            if response.status_code == 200:
-                if validate_response(response.json()):
-                    return response
-            elif response.status_code == 429:
+            response.raise_for_status()
+            if validate_response(response.json()):
+                return response
+        except requests.exceptions.HTTPError as e:
+            if response.status_code == 429:
                 # Use the Retry-After header to determine the cool-off time
                 cool_off_time = response.headers.get("Retry-After", backoff_time)
                 logging.info(
@@ -83,16 +84,21 @@ def call_api(params: dict):
                 time.sleep(cool_off_time)
                 backoff_time *= 2
             else:
-                raise Exception(
-                    f"API request failed with status code {response.status_code}"
-                )
-        except Exception as e:
-            logging.info(f"API request failed with exception {e}")
-            break
+                logging.error(f"HTTP error: {e}")
+                return None
+        except requests.exceptions.ConnectionError as e:
+            logging.error(f"Connection error: {e}")
+            return None
+        except requests.exceptions.Timeout as e:
+            logging.error(f"Timeout error: {e}")
+            return None
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Request error: {e}")
+            return None
         call_attempts += 1
         logging.info(f"Call attempts: {call_attempts}")
     logging.info("Max number of call attempts reached. Returning empty result")
-    return response
+    return None
 
 
 def get_data_meteo_api(
@@ -133,7 +139,15 @@ def get_data_meteo_api(
 def calculate_mean_std(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculates the mean and standard deviation for each prefix in the \
-    DataFrame's columns.
+    DataFrame's columns. So if the DataFrame has columns 'temperature_2m_mean_df0', \
+    'temperature_2m_mean_df1', 'precipitation_sum_df0', 'precipitation_sum_df1', \
+    'soil_moisture_0_to_10cm_mean_df0', and 'soil_moisture_0_to_10cm_mean_df1', \
+    the function will calculate the mean and standard deviation for the \
+    'temperature_2m_mean', 'precipitation_sum', and 'soil_moisture_0_to_10cm_mean' \
+    prefixes. Once the mean and standard deviation are calculated, the original \
+    columns are dropped and the new columns are added to the DataFrame. Other columns \
+    without underscores are left untouched(i.e. 'city' and 'time')
+    
     :param df: The DataFrame to calculate the mean and standard deviation for.
     :return: A new DataFrame with the mean and standard deviation for each prefix in the 
     original DataFrame's columns.
@@ -151,10 +165,61 @@ def calculate_mean_std(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+# def plot_data(df: pd.DataFrame, variable: str) -> None:
+#     """
+#     Plots the annual mean and dispersion of a specified variable for each city in \
+#     the DataFrame.
+#     :param df: The DataFrame containing the data to plot.
+#     :param variable: The variable to plot.
+#     :return: None
+#     """
+
+#     # Create a mapping from short variable names to full names
+#     short_to_full = {v.split("_")[0]: v for v in VARIABLES}
+
+#     # Retrieve the full name of the variable
+#     full_variable_name = short_to_full.get(variable, variable)
+
+#     fig, ax = plt.subplots(figsize=(12, 8))
+#     # Create a distinct color for each city
+#     colors = plt.cm.viridis(np.linspace(0, 1, len(COORDINATES)))
+
+
+#     for idx, city in enumerate(COORDINATES.keys()):
+#         city_data = df[df["city"] == city]
+#         mean = city_data[f"{variable}_mean"]
+#         std = city_data[f"{variable}_std"]
+#         plt.plot(
+#             city_data["year"],
+#             mean,
+#             label=city,
+#             color=colors[idx],
+#             marker="o",
+#             linestyle="-",
+#             linewidth=2,
+#         )
+#         plt.fill_between(
+#             city_data["year"], mean - std, mean + std, color=colors[idx], alpha=0.3
+#         )
+
+#     ax.set_title(
+#         f'Annual Mean and Dispersion of {full_variable_name.replace("_", " ").capitalize()}',
+#         fontsize=14,
+#     )
+#     ax.set_xlabel("Year", fontsize=12)
+#     ax.set_ylabel(full_variable_name.replace("_", " ").capitalize(), fontsize=12)
+#     ax.tick_params(axis="both", which="major", labelsize=10)
+#     ax.grid(True)
+#     ax.legend(loc="upper left", bbox_to_anchor=(1, 1), fontsize=10)
+#     plt.tight_layout()
+#     plt.show()
+
+
 def plot_data(df: pd.DataFrame, variable: str) -> None:
     """
     Plots the annual mean and dispersion of a specified variable for each city in \
-    the DataFrame.
+    the DataFrame, using line plots for means and dashed lines for standard deviation.
+    This approach improves clarity and accessibility for the general population, including individuals with color vision deficiencies.
     :param df: The DataFrame containing the data to plot.
     :param variable: The variable to plot.
     :return: None
@@ -166,72 +231,94 @@ def plot_data(df: pd.DataFrame, variable: str) -> None:
     # Retrieve the full name of the variable
     full_variable_name = short_to_full.get(variable, variable)
 
-    plt.figure(figsize=(12, 8))
-
-    # Create a distinct color for each city
-    colors = plt.cm.viridis(np.linspace(0, 1, len(COORDINATES)))
+    fig, ax = plt.subplots(figsize=(12, 8))
+    # Create a distinct color and line style for each city
+    colors = plt.cm.Set2(np.linspace(0, 1, len(COORDINATES)))
+    markers = ["o", "s", "D"]  # Circle, square, diamond
 
     for idx, city in enumerate(COORDINATES.keys()):
         city_data = df[df["city"] == city]
         mean = city_data[f"{variable}_mean"]
         std = city_data[f"{variable}_std"]
+        # Plot mean
         plt.plot(
             city_data["year"],
             mean,
-            label=city,
+            label=f"{city} Mean",
             color=colors[idx],
-            marker="o",
+            marker=markers[idx % len(markers)],
             linestyle="-",
             linewidth=2,
+            markersize=8,
         )
-        plt.fill_between(
-            city_data["year"], mean - std, mean + std, color=colors[idx], alpha=0.3
+        # Plot standard deviation with dashed lines
+        plt.plot(
+            city_data["year"],
+            mean + std,
+            color=colors[idx],
+            label=f"{city} Upper bound",
+            linestyle="dashed",
+            linewidth=2,
+            alpha=0.7,
+        )
+        plt.plot(
+            city_data["year"],
+            mean - std,
+            label=f"{city} Lower bound",
+            color=colors[idx],
+            linestyle="dashdot",
+            linewidth=2,
+            alpha=0.7,
         )
 
-    plt.title(
+    ax.set_title(
         f'Annual Mean and Dispersion of {full_variable_name.replace("_", " ").capitalize()}',
         fontsize=14,
     )
-    plt.xlabel("Year", fontsize=12)
-    plt.ylabel(full_variable_name.replace("_", " ").capitalize(), fontsize=12)
-    plt.xticks(fontsize=10)
-    plt.yticks(fontsize=10)
-    plt.grid(True)
-    plt.legend(loc="upper left", bbox_to_anchor=(1, 1), fontsize=10)
+    ax.set_xlabel("Year", fontsize=12)
+    ax.set_ylabel(full_variable_name.replace("_", " ").capitalize(), fontsize=12)
+    ax.tick_params(axis="both", which="major", labelsize=10)
+    ax.grid(True, which="both", linewidth=0.5, alpha=0.7)
+    ax.legend(loc="upper left", bbox_to_anchor=(1, 1), fontsize=12)
     plt.tight_layout()
     plt.show()
 
 
 def main():
-    list_data_cities = []
-    for city in COORDINATES.keys():
-        logging.info(f"Getting data for {city}")
-        list_data_variables = []
-        for variable in VARIABLES:
-            logging.info(f"Getting data for {variable} in {city}")
-            for model in MODELS:
-                logging.info(f"Getting data for {model} in {city}")
-                data = get_data_meteo_api(
-                    city, "1950-01-01", "1960-12-31", variable, model
-                )
-                logging.info(data.head())
-                list_data_variables.append(data)
-        combined_df = list_data_variables[0]
-        for i, df in enumerate(list_data_variables[1:], 1):
-            combined_df = pd.merge(
-                combined_df, df, on=["time", "city"], suffixes=("", f"_df{i}")
-            )
+    # start_date = "1950-01-01"
+    # end_date = "1960-12-31"
+    # list_data_cities = []
+    # for city in COORDINATES.keys():
+    #     logging.info(f"Getting data for {city}")
+    #     list_data_variables = []
+    #     for variable in VARIABLES:
+    #         logging.info(f"Getting data for {variable} in {city}")
+    #         for model in MODELS:
+    #             logging.info(f"Getting data for {model} in {city}")
+    #             data = get_data_meteo_api(city, start_date, end_date, variable, model)
+    #             if data is None:
+    #                 logging.warning(
+    #                     f"Skipping {model} due to missing data for {city} with {variable}."
+    #                 )
+    #                 continue
+    #             logging.info(data.head())
+    #             list_data_variables.append(data)
+    #     combined_df = list_data_variables[0]
+    #     for i, df in enumerate(list_data_variables[1:], 1):
+    #         combined_df = pd.merge(
+    #             combined_df, df, on=["time", "city"], suffixes=("", f"_df{i}")
+    #         )
 
-        data_with_calculation = calculate_mean_std(combined_df)
-        list_data_cities.append(data_with_calculation)
+    #     data_with_calculation = calculate_mean_std(combined_df)
+    #     list_data_cities.append(data_with_calculation)
 
-    df_total = pd.concat(list_data_cities)
+    # df_total = pd.concat(list_data_cities)
 
-    df_total["time"] = pd.to_datetime(df_total["time"])
-    df_total["year"] = df_total["time"].dt.year
+    # df_total["time"] = pd.to_datetime(df_total["time"])
+    # df_total["year"] = df_total["time"].dt.year
 
-    annual_data = df_total.groupby(["city", "year"]).mean().reset_index()
-    annual_data.to_csv("src/module_1/annual_data.csv", index=False)
+    # annual_data = df_total.groupby(["city", "year"]).mean().reset_index()
+    # annual_data.to_csv("src/module_1/annual_data.csv", index=False)
 
     annual_data = pd.read_csv("src/module_1/annual_data.csv")
     annual_data = annual_data.drop(["time"], axis=1)
