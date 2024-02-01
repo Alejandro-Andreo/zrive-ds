@@ -165,56 +165,6 @@ def calculate_mean_std(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# def plot_data(df: pd.DataFrame, variable: str) -> None:
-#     """
-#     Plots the annual mean and dispersion of a specified variable for each city in \
-#     the DataFrame.
-#     :param df: The DataFrame containing the data to plot.
-#     :param variable: The variable to plot.
-#     :return: None
-#     """
-
-#     # Create a mapping from short variable names to full names
-#     short_to_full = {v.split("_")[0]: v for v in VARIABLES}
-
-#     # Retrieve the full name of the variable
-#     full_variable_name = short_to_full.get(variable, variable)
-
-#     fig, ax = plt.subplots(figsize=(12, 8))
-#     # Create a distinct color for each city
-#     colors = plt.cm.viridis(np.linspace(0, 1, len(COORDINATES)))
-
-
-#     for idx, city in enumerate(COORDINATES.keys()):
-#         city_data = df[df["city"] == city]
-#         mean = city_data[f"{variable}_mean"]
-#         std = city_data[f"{variable}_std"]
-#         plt.plot(
-#             city_data["year"],
-#             mean,
-#             label=city,
-#             color=colors[idx],
-#             marker="o",
-#             linestyle="-",
-#             linewidth=2,
-#         )
-#         plt.fill_between(
-#             city_data["year"], mean - std, mean + std, color=colors[idx], alpha=0.3
-#         )
-
-#     ax.set_title(
-#         f'Annual Mean and Dispersion of {full_variable_name.replace("_", " ").capitalize()}',
-#         fontsize=14,
-#     )
-#     ax.set_xlabel("Year", fontsize=12)
-#     ax.set_ylabel(full_variable_name.replace("_", " ").capitalize(), fontsize=12)
-#     ax.tick_params(axis="both", which="major", labelsize=10)
-#     ax.grid(True)
-#     ax.legend(loc="upper left", bbox_to_anchor=(1, 1), fontsize=10)
-#     plt.tight_layout()
-#     plt.show()
-
-
 def plot_data(df: pd.DataFrame, variable: str) -> None:
     """
     Plots the annual mean and dispersion of a specified variable for each city in \
@@ -285,40 +235,45 @@ def plot_data(df: pd.DataFrame, variable: str) -> None:
 
 
 def main():
-    # start_date = "1950-01-01"
-    # end_date = "1960-12-31"
-    # list_data_cities = []
-    # for city in COORDINATES.keys():
-    #     logging.info(f"Getting data for {city}")
-    #     list_data_variables = []
-    #     for variable in VARIABLES:
-    #         logging.info(f"Getting data for {variable} in {city}")
-    #         for model in MODELS:
-    #             logging.info(f"Getting data for {model} in {city}")
-    #             data = get_data_meteo_api(city, start_date, end_date, variable, model)
-    #             if data is None:
-    #                 logging.warning(
-    #                     f"Skipping {model} due to missing data for {city} with {variable}."
-    #                 )
-    #                 continue
-    #             logging.info(data.head())
-    #             list_data_variables.append(data)
-    #     combined_df = list_data_variables[0]
-    #     for i, df in enumerate(list_data_variables[1:], 1):
-    #         combined_df = pd.merge(
-    #             combined_df, df, on=["time", "city"], suffixes=("", f"_df{i}")
-    #         )
+    start_date = "1950-01-01"
+    end_date = "1960-12-31"
+    list_data_cities = []
+    for city in COORDINATES.keys():
+        logging.info(f"Getting data for {city}")
+        list_data_variables = []
+        for variable in VARIABLES:
+            logging.info(f"Getting data for {variable} in {city}")
+            for model in MODELS:
+                logging.info(f"Getting data for {model} in {city}")
+                data = get_data_meteo_api(city, start_date, end_date, variable, model)
+                if data is None:
+                    logging.warning(
+                        f"Skipping {model} due to missing data for {city} with {variable}."
+                    )
+                    continue
+                logging.info(data.head())
+                list_data_variables.append(data) 
+                
+        combined_df = pd.concat([df.set_index(['time', 'city']) for df in list_data_variables],
+            axis=1)
+        
+        # Flatten the MultiIndex columns and handle duplicated variable names with suffixes
+        combined_df.columns = [
+            f'{col}_{i}' if i > 0 else col
+            for i, col in enumerate(combined_df.columns)
+        ]
+        combined_df = combined_df.reset_index()
 
-    #     data_with_calculation = calculate_mean_std(combined_df)
-    #     list_data_cities.append(data_with_calculation)
+        data_with_calculation = calculate_mean_std(combined_df)
+        list_data_cities.append(data_with_calculation)
 
-    # df_total = pd.concat(list_data_cities)
+    df_total = pd.concat(list_data_cities)
 
-    # df_total["time"] = pd.to_datetime(df_total["time"])
-    # df_total["year"] = df_total["time"].dt.year
+    df_total["time"] = pd.to_datetime(df_total["time"])
+    df_total["year"] = df_total["time"].dt.year
 
-    # annual_data = df_total.groupby(["city", "year"]).mean().reset_index()
-    # annual_data.to_csv("src/module_1/annual_data.csv", index=False)
+    annual_data = df_total.groupby(["city", "year"]).mean().reset_index()
+    annual_data.to_csv("src/module_1/annual_data.csv", index=False)
 
     annual_data = pd.read_csv("src/module_1/annual_data.csv")
     annual_data = annual_data.drop(["time"], axis=1)
