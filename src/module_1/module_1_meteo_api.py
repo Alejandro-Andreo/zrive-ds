@@ -103,7 +103,7 @@ def call_api(params: dict):
 
 def get_data_meteo_api(
     city: str, start_date: str, end_date: str, variable: str, model: str
-) -> pd.DataFrame():
+) -> pd.DataFrame:
     """
     Fetches daily weather data for a specific city and variable from the Meteo API.
     :param city: The name of the city to fetch the data for. Must be a key in the \
@@ -147,9 +147,8 @@ def calculate_mean_std(df: pd.DataFrame) -> pd.DataFrame:
     prefixes. Once the mean and standard deviation are calculated, the original \
     columns are dropped and the new columns are added to the DataFrame. Other columns \
     without underscores are left untouched(i.e. 'city' and 'time')
-    
     :param df: The DataFrame to calculate the mean and standard deviation for.
-    :return: A new DataFrame with the mean and standard deviation for each prefix in the 
+    :return: A new DataFrame with the mean and standard deviation for each prefix in the
     original DataFrame's columns.
     """
     df = df.copy()
@@ -169,7 +168,8 @@ def plot_data(df: pd.DataFrame, variable: str) -> None:
     """
     Plots the annual mean and dispersion of a specified variable for each city in \
     the DataFrame, using line plots for means and dashed lines for standard deviation.
-    This approach improves clarity and accessibility for the general population, including individuals with color vision deficiencies.
+    This approach improves clarity and accessibility for the general population,
+    including individuals with color vision deficiencies.
     :param df: The DataFrame containing the data to plot.
     :param variable: The variable to plot.
     :return: None
@@ -222,7 +222,8 @@ def plot_data(df: pd.DataFrame, variable: str) -> None:
         )
 
     ax.set_title(
-        f'Annual Mean and Dispersion of {full_variable_name.replace("_", " ").capitalize()}',
+        f'Annual Mean and Dispersion of \
+            {full_variable_name.replace("_", " ").capitalize()}',
         fontsize=14,
     )
     ax.set_xlabel("Year", fontsize=12)
@@ -248,19 +249,21 @@ def main():
                 data = get_data_meteo_api(city, start_date, end_date, variable, model)
                 if data is None:
                     logging.warning(
-                        f"Skipping {model} due to missing data for {city} with {variable}."
+                        f"Skipping {model} due to missing data for {city} with \
+                        {variable}."
                     )
                     continue
                 logging.info(data.head())
-                list_data_variables.append(data) 
-                
-        combined_df = pd.concat([df.set_index(['time', 'city']) for df in list_data_variables],
-            axis=1)
-        
-        # Flatten the MultiIndex columns and handle duplicated variable names with suffixes
+                list_data_variables.append(data)
+
+        combined_df = pd.concat(
+            [df.set_index(["time", "city"]) for df in list_data_variables], axis=1
+        )
+
+        """Flatten the MultiIndex columns and handle duplicated variable names
+        with suffixes"""
         combined_df.columns = [
-            f'{col}_{i}' if i > 0 else col
-            for i, col in enumerate(combined_df.columns)
+            f"{col}_{i}" if i > 0 else col for i, col in enumerate(combined_df.columns)
         ]
         combined_df = combined_df.reset_index()
 
