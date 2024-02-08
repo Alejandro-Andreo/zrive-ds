@@ -14,24 +14,25 @@ import os
 import pandas as pd
 import seaborn as sns
 
+from pathlib import Path
 from IPython.display import Markdown, display
 
 DATA_PATH = "/home/alejandro/Zrive"
 
-abandoned_carts_df = pd.read_parquet(os.path.join(DATA_PATH, 'abandoned_carts.parquet'))
-inventory_df = pd.read_parquet(os.path.join(DATA_PATH, 'inventory.parquet'))
-orders_df = pd.read_parquet(os.path.join(DATA_PATH, 'orders.parquet'))
-regulars_df = pd.read_parquet(os.path.join(DATA_PATH, 'regulars.parquet'))
-users_df = pd.read_parquet(os.path.join(DATA_PATH, 'users.parquet'))
+abandoned_carts_df = pd.read_parquet(Path(DATA_PATH, "abandoned_carts.parquet"))
+inventory_df = pd.read_parquet(Path(DATA_PATH, "inventory.parquet"))
+orders_df = pd.read_parquet(Path(DATA_PATH, "orders.parquet"))
+regulars_df = pd.read_parquet(Path(DATA_PATH, "regulars.parquet"))
+users_df = pd.read_parquet(Path(DATA_PATH, "users.parquet"))
 
-feature_frame = pd.read_csv(os.path.join(DATA_PATH, 'feature_frame.csv'))
+feature_frame = pd.read_csv(Path(DATA_PATH, "feature_frame.csv"))
 
 
 def printmd(string):
     display(Markdown(string))
 ```
 
-# Part 1
+# Part 1: Understanding the problem space
 
 The data is partitioned over multiple dataset and comes from a groceries ecommerce
 platform selling products directly to consumers (think of it as an online
@@ -60,7 +61,7 @@ datasets = {
     "Inventory": inventory_df,
     "Orders": orders_df,
     "Regulars": regulars_df,
-    "Users": users_df
+    "Users": users_df,
 }
 
 # Displaying the first few rows of each dataset and their info to identify potential issues
@@ -70,7 +71,6 @@ for name, df in datasets.items():
     df.info()
     print("\nMising values(NAs):")
     display(df.isna().sum())
-
 ```
 
 
@@ -620,16 +620,24 @@ Let's first check the frequency of orders per user.
 
 
 ```python
-orders_frequency = orders_df['user_id'].value_counts().reset_index().rename(columns={'count': 'order_count'})
-display(orders_frequency['order_count'].describe())
-plt.hist(orders_frequency["order_count"],bins = len(orders_frequency["order_count"].unique()), edgecolor="k")
-plt.title('Distribution of Order Frequencies per User')
-plt.xlabel('Number of Orders')
-plt.ylabel('Number of Users')
-plt.xlim(min(orders_frequency["order_count"]-1), max(orders_frequency["order_count"]))
-plt.grid(axis='y', alpha=0.75)
+orders_frequency = (
+    orders_df["user_id"]
+    .value_counts()
+    .reset_index()
+    .rename(columns={"count": "order_count"})
+)
+display(orders_frequency["order_count"].describe())
+plt.hist(
+    orders_frequency["order_count"],
+    bins=len(orders_frequency["order_count"].unique()),
+    edgecolor="k",
+)
+plt.title("Distribution of Order Frequencies per User")
+plt.xlabel("Number of Orders")
+plt.ylabel("Number of Users")
+plt.xlim(min(orders_frequency["order_count"] - 1), max(orders_frequency["order_count"]))
+plt.grid(axis="y", alpha=0.75)
 plt.show()
-
 ```
 
 
@@ -655,12 +663,12 @@ Most of users just make 1 order, which indicates that the platform has a large b
 
 ```python
 # Calculate order size as the length of the ordered_items list for each order
-orders_df['order_size'] = orders_df['ordered_items'].apply(len)
+orders_df["order_size"] = orders_df["ordered_items"].apply(len)
 # Analyze the distribution of order sizes
-order_size_distribution = orders_df['order_size'].describe()
+order_size_distribution = orders_df["order_size"].describe()
 display(order_size_distribution)
 printmd(f"Most common order size: {orders_df['order_size'].mode()[0]}")
-plt.hist(orders_df['order_size'], bins=50, edgecolor='k')
+plt.hist(orders_df["order_size"], bins=50, edgecolor="k")
 plt.title("Distribution of Orders Sizes")
 plt.xlabel("Order Size (Number of Items)")
 plt.ylabel("Frequency")
@@ -695,19 +703,32 @@ As each item has a unique id, we can't know what each item is. However, we can s
 
 
 ```python
-item_frequencies = orders_df.explode('ordered_items')['ordered_items'].value_counts().reset_index().rename(columns={'ordered_items':'variant_id','count':'item_count'})
+item_frequencies = (
+    orders_df.explode("ordered_items")["ordered_items"]
+    .value_counts()
+    .reset_index()
+    .rename(columns={"ordered_items": "variant_id", "count": "item_count"})
+)
 
 # merge with inventory to get category information
-common_items = pd.merge(item_frequencies, inventory_df, on='variant_id', how='inner')
+common_items = pd.merge(item_frequencies, inventory_df, on="variant_id", how="inner")
 
 # plot the top 10 most ordered items
-plt.bar(common_items['variant_id'][:10].astype(str),common_items['item_count'][:10],edgecolor='k')
-plt.title('Top 10 Most Ordered Items')
-plt.xlabel('Item')
-plt.ylabel('Frequency')
-plt.xticks(ticks=range(0,10),labels=common_items['product_type'][:10],rotation=45, ha='right')
+plt.bar(
+    common_items["variant_id"][:10].astype(str),
+    common_items["item_count"][:10],
+    edgecolor="k",
+)
+plt.title("Top 10 Most Ordered Items")
+plt.xlabel("Item")
+plt.ylabel("Frequency")
+plt.xticks(
+    ticks=range(0, 10),
+    labels=common_items["product_type"][:10],
+    rotation=45,
+    ha="right",
+)
 plt.show()
-
 ```
 
 
@@ -721,13 +742,22 @@ There is a catch here, as we don't have the category of each item, when we merge
 
 ```python
 # Determine the most commonly ordered categories
-common_categories = common_items.groupby('product_type')['item_count'].sum().reset_index().sort_values('item_count', ascending=False)
+common_categories = (
+    common_items.groupby("product_type")["item_count"]
+    .sum()
+    .reset_index()
+    .sort_values("item_count", ascending=False)
+)
 
-plt.bar(x=common_categories['product_type'][:10], height=common_categories['item_count'][:10], edgecolor='k')
-plt.title('Top 10 Most Ordered Categories')
-plt.xlabel('Product Category')
-plt.ylabel('Frecuency')
-plt.xticks(rotation=45, ha = 'right')  
+plt.bar(
+    x=common_categories["product_type"][:10],
+    height=common_categories["item_count"][:10],
+    edgecolor="k",
+)
+plt.title("Top 10 Most Ordered Categories")
+plt.xlabel("Product Category")
+plt.ylabel("Frecuency")
+plt.xticks(rotation=45, ha="right")
 plt.show()
 ```
 
@@ -740,13 +770,22 @@ plt.show()
 
 ```python
 # Top 10 most ordered brands
-common_brands = common_items.groupby('vendor')['item_count'].sum().reset_index().sort_values('item_count', ascending=False)
+common_brands = (
+    common_items.groupby("vendor")["item_count"]
+    .sum()
+    .reset_index()
+    .sort_values("item_count", ascending=False)
+)
 
-plt.bar(x=common_brands['vendor'][:10], height=common_categories['item_count'][:10], edgecolor='k')
-plt.title('Top 10 Most Ordered Brands')
-plt.xlabel('Product brand')
-plt.ylabel('Frecuency')
-plt.xticks(rotation=45, ha = 'right')  
+plt.bar(
+    x=common_brands["vendor"][:10],
+    height=common_categories["item_count"][:10],
+    edgecolor="k",
+)
+plt.title("Top 10 Most Ordered Brands")
+plt.xlabel("Product brand")
+plt.ylabel("Frecuency")
+plt.xticks(rotation=45, ha="right")
 plt.show()
 ```
 
@@ -760,17 +799,24 @@ plt.show()
 ```python
 # Determine the items and categories which bring the most revenue
 # Calculate the revenue for each item by multiplying the price of each item by the quantity ordered
-common_items['revenue'] = common_items['item_count'] * common_items['price']
-common_items = common_items.sort_values('revenue', ascending=False)
+common_items["revenue"] = common_items["item_count"] * common_items["price"]
+common_items = common_items.sort_values("revenue", ascending=False)
 
-plt.bar(common_items['variant_id'][:10].astype(str), common_items['revenue'][:10], edgecolor='k')
-plt.title('Top 10 Items by Revenue')
-plt.xlabel('Item')
-plt.ylabel('Revenue')
-plt.xticks(ticks=range(0,10),labels=common_items['product_type'][:10],rotation=45, ha='right')
+plt.bar(
+    common_items["variant_id"][:10].astype(str),
+    common_items["revenue"][:10],
+    edgecolor="k",
+)
+plt.title("Top 10 Items by Revenue")
+plt.xlabel("Item")
+plt.ylabel("Revenue")
+plt.xticks(
+    ticks=range(0, 10),
+    labels=common_items["product_type"][:10],
+    rotation=45,
+    ha="right",
+)
 plt.show()
-
-
 ```
 
 
@@ -784,33 +830,42 @@ As we can see, the product which produces the most revenue by far, is part of th
 
 ```python
 # Calculate the total revenue of the rest of the dataset
-rest_revenue = common_items['revenue'][10:].sum()
+rest_revenue = common_items["revenue"][10:].sum()
 
 # Create a new dataframe to hold the data for the bar plot
-revenue_data = pd.DataFrame({'Product': ['Top 10 Items', 'Rest of Dataset'],
-                             'Revenue': [common_items['revenue'][:10].sum(), rest_revenue]})
+revenue_data = pd.DataFrame(
+    {
+        "Product": ["Top 10 Items", "Rest of Dataset"],
+        "Revenue": [common_items["revenue"][:10].sum(), rest_revenue],
+    }
+)
 
 # Plot the bar chart
-plt.bar(revenue_data['Product'], revenue_data['Revenue'], edgecolor='k')
-plt.title('Revenue Comparison')
-plt.xlabel('Product')
-plt.ylabel('Revenue')
+plt.bar(revenue_data["Product"], revenue_data["Revenue"], edgecolor="k")
+plt.title("Revenue Comparison")
+plt.xlabel("Product")
+plt.ylabel("Revenue")
 plt.show()
 
 # Calculate percentage of revenue from the top 10 items
-top_10_revenue = common_items['revenue'][:10].sum()
-total_revenue = common_items['revenue'].sum()
+top_10_revenue = common_items["revenue"][:10].sum()
+total_revenue = common_items["revenue"].sum()
 top_10_revenue_percentage = top_10_revenue / total_revenue * 100
-printmd(f"Percentage of revenue from the top 10 items: {top_10_revenue_percentage:.2f}%")
+printmd(
+    f"Percentage of revenue from the top 10 items: {top_10_revenue_percentage:.2f}%"
+)
 # Calculate percentage of revenue from the rest of the dataset
-rest_revenue = common_items['revenue'][10:].sum()
+rest_revenue = common_items["revenue"][10:].sum()
 rest_revenue_percentage = rest_revenue / total_revenue * 100
-printmd(f"Percentage of revenue from the rest of the dataset: {rest_revenue_percentage:.2f}%")
-# Calculate percentage of revenue from the top product 
-top_product_revenue = common_items['revenue'][0]
+printmd(
+    f"Percentage of revenue from the rest of the dataset: {rest_revenue_percentage:.2f}%"
+)
+# Calculate percentage of revenue from the top product
+top_product_revenue = common_items["revenue"][0]
 top_product_revenue_percentage = top_product_revenue / total_revenue * 100
-printmd(f"Percentage of revenue from the top product: {top_product_revenue_percentage:.2f}%")
-
+printmd(
+    f"Percentage of revenue from the top product: {top_product_revenue_percentage:.2f}%"
+)
 ```
 
 
@@ -835,20 +890,35 @@ The platform's product portfolio doesn't appear to be well balanced in terms of 
 
 
 ```python
-category_revenue = common_items.groupby('product_type')['revenue'].sum().reset_index().sort_values('revenue', ascending=False)
-fig, ax = plt.subplots(1,2, figsize=(15,5))
-ax[0].bar(x=category_revenue['product_type'], height=category_revenue['revenue'], edgecolor='k')
-ax[0].set_title('Categories by Revenue')
-ax[0].set_xlabel('Category')
-ax[0].set_ylabel('Revenue')
-ax[0].set_xticklabels(category_revenue['product_type'],rotation=45, ha='right')
+category_revenue = (
+    common_items.groupby("product_type")["revenue"]
+    .sum()
+    .reset_index()
+    .sort_values("revenue", ascending=False)
+)
+fig, ax = plt.subplots(1, 2, figsize=(15, 5))
+ax[0].bar(
+    x=category_revenue["product_type"],
+    height=category_revenue["revenue"],
+    edgecolor="k",
+)
+ax[0].set_title("Categories by Revenue")
+ax[0].set_xlabel("Category")
+ax[0].set_ylabel("Revenue")
+ax[0].set_xticks(range(0, len(category_revenue)))
+ax[0].set_xticklabels(category_revenue["product_type"], rotation=45, ha="right")
 
 
-ax[1].bar(x=category_revenue['product_type'][:10], height=category_revenue['revenue'][:10], edgecolor='k')
-ax[1].set_title('Top 10 Categories by Revenue')
-ax[1].set_xlabel('Category')
-ax[1].set_ylabel('Revenue')
-ax[1].set_xticklabels(category_revenue['product_type'][:10],rotation=45, ha='right')
+ax[1].bar(
+    x=category_revenue["product_type"][:10],
+    height=category_revenue["revenue"][:10],
+    edgecolor="k",
+)
+ax[1].set_title("Top 10 Categories by Revenue")
+ax[1].set_xlabel("Category")
+ax[1].set_ylabel("Revenue")
+ax[1].set_xticks(range(0, 10))
+ax[1].set_xticklabels(category_revenue["product_type"][:10], rotation=45, ha="right")
 
 plt.tight_layout()
 plt.show()
@@ -893,9 +963,16 @@ Let's know try to combine the regulars dataframe with the users dataframe, to un
 
 ```python
 # Calculate number of regulars by user
-regulars_by_user = regulars_df.groupby('user_id')['variant_id'].nunique().reset_index().rename(columns={'variant_id': 'regulars_count'})
+regulars_by_user = (
+    regulars_df.groupby("user_id")["variant_id"]
+    .nunique()
+    .reset_index()
+    .rename(columns={"variant_id": "regulars_count"})
+)
 # Merge with users to get user information
-users = pd.merge( users_df,regulars_by_user, on='user_id', how='left').fillna({'regulars_count': 0})
+users = pd.merge(users_df, regulars_by_user, on="user_id", how="left").fillna(
+    {"regulars_count": 0}
+)
 users.describe()
 ```
 
@@ -1012,7 +1089,7 @@ Most people don't have a regular list, which is expected, as it's most likely vo
 
 ```python
 # distribution of user_segment values
-users['user_segment'].value_counts().plot.pie(y='user_segment',autopct='%1.1f%%')
+users["user_segment"].value_counts().plot.pie(y="user_segment", autopct="%1.1f%%")
 ```
 
 
@@ -1030,8 +1107,8 @@ users['user_segment'].value_counts().plot.pie(y='user_segment',autopct='%1.1f%%'
 
 
 ```python
-#Distribution by user_segment of the number of regulars
-users.groupby('user_segment').sum().plot.pie(y='regulars_count', autopct='%1.1f%%')
+# Distribution by user_segment of the number of regulars
+users.groupby("user_segment").sum().plot.pie(y="regulars_count", autopct="%1.1f%%")
 ```
 
 
@@ -1050,10 +1127,10 @@ users.groupby('user_segment').sum().plot.pie(y='regulars_count', autopct='%1.1f%
 
 ```python
 # Check the average number of regulars_count by user segment
-users.groupby('user_segment')['regulars_count'].mean().plot.bar(edgecolor='k')
-plt.title('Average Number of Regulars by User Segment')
-plt.xlabel('User Segment')
-plt.ylabel('Average Number of Regulars')
+users.groupby("user_segment")["regulars_count"].mean().plot.bar(edgecolor="k")
+plt.title("Average Number of Regulars by User Segment")
+plt.xlabel("User Segment")
+plt.ylabel("Average Number of Regulars")
 plt.show()
 ```
 
@@ -1065,7 +1142,7 @@ plt.show()
 
 
 ```python
-(users['count_people'] > 1).sum() / len(users['count_people'].dropna()) 
+(users["count_people"] > 1).sum() / len(users["count_people"].dropna())
 ```
 
 
@@ -1077,7 +1154,9 @@ plt.show()
 
 
 ```python
-pd.crosstab(users['user_nuts1'], users['user_segment']).plot.bar(stacked=True, edgecolor='k')
+pd.crosstab(users["user_nuts1"], users["user_segment"]).plot.bar(
+    stacked=True, edgecolor="k"
+)
 ```
 
 
@@ -1105,19 +1184,22 @@ Insights:
 
 
 ```python
-regulars = regulars_df.merge(inventory_df, on='variant_id', how='inner')
+regulars = regulars_df.merge(inventory_df, on="variant_id", how="inner")
 ```
 
 
 ```python
 # Top 10 items with the most regulars
-regulars.groupby('variant_id')['user_id'].nunique().sort_values(ascending=False).head(10).plot.bar(edgecolor='k')
-plt.title('Top 10 Items with the Most Regulars')
-plt.xlabel('Item')
-plt.ylabel('Number of Regulars')
-plt.xticks(ticks=range(0,10),labels=regulars['product_type'][:10],rotation=45, ha='right')
+regulars.groupby("variant_id")["user_id"].nunique().sort_values(ascending=False).head(
+    10
+).plot.bar(edgecolor="k")
+plt.title("Top 10 Items with the Most Regulars")
+plt.xlabel("Item")
+plt.ylabel("Number of Regulars")
+plt.xticks(
+    ticks=range(0, 10), labels=regulars["product_type"][:10], rotation=45, ha="right"
+)
 plt.show()
-
 ```
 
 
@@ -1130,9 +1212,9 @@ Curious, the most regular items don't match the most ordered item's categories n
 
 
 ```python
-sns.kdeplot(regulars['price'], label= 'regular_price')
-sns.kdeplot(inventory_df['price'], label= 'inventory_price')
-sns.kdeplot(common_items['price'], label= 'common_items_price')
+sns.kdeplot(regulars["price"], label="regular_price")
+sns.kdeplot(inventory_df["price"], label="inventory_price")
+sns.kdeplot(common_items["price"], label="common_items_price")
 ```
 
 
@@ -1150,10 +1232,21 @@ sns.kdeplot(common_items['price'], label= 'common_items_price')
 
 
 ```python
-orders = (orders_df.explode('ordered_items')['ordered_items'].value_counts(normalize=True).reset_index()
- .rename(columns={'ordered_items':'variant_id','proportion':'orders_prevalence'})
- .merge(inventory_df, on='variant_id')
-).groupby('product_type')['orders_prevalence'].sum().reset_index().sort_values('orders_prevalence', ascending=False)
+orders = (
+    (
+        orders_df.explode("ordered_items")["ordered_items"]
+        .value_counts(normalize=True)
+        .reset_index()
+        .rename(
+            columns={"ordered_items": "variant_id", "proportion": "orders_prevalence"}
+        )
+        .merge(inventory_df, on="variant_id")
+    )
+    .groupby("product_type")["orders_prevalence"]
+    .sum()
+    .reset_index()
+    .sort_values("orders_prevalence", ascending=False)
+)
 orders.head(10)
 ```
 
@@ -1242,18 +1335,26 @@ orders.head(10)
 
 ```python
 diff_prevalence = (
-    inventory_df['product_type'].value_counts(normalize=True).rename('inventory_prevalence').reset_index()
-    .merge(regulars['product_type'].value_counts(normalize=True).rename('regulars_prevalence').reset_index())
-    .merge(orders[["product_type","orders_prevalence"]], how='left')    
-    .assign(inventory_rank=lambda x: x['inventory_prevalence'].rank(ascending=False))
-    .assign(regulars_rank=lambda x: x['regulars_prevalence'].rank(ascending=False))
-    .assign(orders_rank=lambda x: x['orders_prevalence'].rank(ascending=False))
+    inventory_df["product_type"]
+    .value_counts(normalize=True)
+    .rename("inventory_prevalence")
+    .reset_index()
+    .merge(
+        regulars["product_type"]
+        .value_counts(normalize=True)
+        .rename("regulars_prevalence")
+        .reset_index()
+    )
+    .merge(orders[["product_type", "orders_prevalence"]], how="left")
+    .assign(inventory_rank=lambda x: x["inventory_prevalence"].rank(ascending=False))
+    .assign(regulars_rank=lambda x: x["regulars_prevalence"].rank(ascending=False))
+    .assign(orders_rank=lambda x: x["orders_prevalence"].rank(ascending=False))
 )
 ```
 
 
 ```python
-diff_prevalence.sort_values('regulars_prevalence', ascending=False).head(15)
+diff_prevalence.sort_values("regulars_prevalence", ascending=False).head(15)
 ```
 
 
@@ -1663,16 +1764,21 @@ feature_frame.info()
 ```python
 info_columns = ["variant_id", "order_id", "user_id", "created_at", "order_date"]
 target = "outcome"
-features_cols = [col for col in feature_frame.columns if col not in info_columns and col != target]
-categorical_cols = ['product_type', 'vendor']
-binary_cols = ['ordered_before','abandoned_before', 'active_snoozed', 'set_as_regular']
-numerical_cols = [col for col in features_cols if col not in categorical_cols and col not in binary_cols]
+features_cols = [
+    col for col in feature_frame.columns if col not in info_columns and col != target
+]
+categorical_cols = ["product_type", "vendor"]
+binary_cols = ["ordered_before", "abandoned_before", "active_snoozed", "set_as_regular"]
+numerical_cols = [
+    col
+    for col in features_cols
+    if col not in categorical_cols and col not in binary_cols
+]
 
 print(f"Number of categorical variables : {len(categorical_cols)}")
 print(f"Number of binary variables : {len(binary_cols)}")
 print(f"Number of numerical variables : {len(numerical_cols)}")
 print(f"Number of info variables : {len(info_columns)}")
-
 ```
 
     Number of categorical variables : 2
@@ -1686,7 +1792,9 @@ print(f"Number of info variables : {len(info_columns)}")
 feature_frame[target].value_counts()
 for col in binary_cols:
     print(f"Value counts for {col}: {feature_frame[col].value_counts().to_dict()}")
-    print(f"Mean outcome by {col} value : {feature_frame.groupby(col)[target].mean().to_dict()}")
+    print(
+        f"Mean outcome by {col} value : {feature_frame.groupby(col)[target].mean().to_dict()}"
+    )
     print("\n")
 ```
 
@@ -1712,9 +1820,9 @@ for col in binary_cols:
 ```python
 # Correlation betweeen outcome and numerical features
 correlation = feature_frame[numerical_cols + [target]].corr()
-plt.figure(figsize=(20,10))
-sns.heatmap(correlation, annot=True, cmap='coolwarm')
-plt.title('Correlation Matrix')
+plt.figure(figsize=(20, 10))
+sns.heatmap(correlation, annot=True, cmap="coolwarm")
+plt.title("Correlation Matrix")
 plt.show()
 ```
 
@@ -1731,8 +1839,8 @@ rows = int(np.ceil(len(numerical_cols) / 3))
 fig, ax = plt.subplots(rows, 3, figsize=(20, 5 * rows))
 ax = ax.flatten()
 for i, col in enumerate(numerical_cols):
-    sns.kdeplot(feature_frame.loc[lambda x: x[target] == 0, col], label='0', ax=ax[i])
-    sns.kdeplot(feature_frame.loc[lambda x: x[target] == 1, col], label='1', ax=ax[i])
+    sns.kdeplot(feature_frame.loc[lambda x: x[target] == 0, col], label="Class 0", ax=ax[i])
+    sns.kdeplot(feature_frame.loc[lambda x: x[target] == 1, col], label="Class 1", ax=ax[i])
     ax[i].set_title(col)
     ax[i].legend()
 
