@@ -299,9 +299,7 @@ df.info()
 ```python
 info_columns = ["variant_id", "order_id", "user_id", "created_at", "order_date"]
 target = "outcome"
-features_cols = [
-    col for col in df.columns if col not in info_columns and col != target
-]
+features_cols = [col for col in df.columns if col not in info_columns and col != target]
 categorical_cols = ["product_type", "vendor"]
 binary_cols = ["ordered_before", "abandoned_before", "active_snoozed", "set_as_regular"]
 numerical_cols = [
@@ -329,22 +327,22 @@ higher than the gross margin coming from it.
 
 
 ```python
-def push_relevant_dataframe(df: pd.DataFrame, min_products: int =5) -> pd.DataFrame:
+def push_relevant_dataframe(df: pd.DataFrame, min_products: int = 5) -> pd.DataFrame:
     """We filtered the dataframe to only include orders with at least 5 products purchased"""
     orders_size = df.groupby("order_id").outcome.sum()
     orders_of_min_size = orders_size[orders_size >= min_products].index
     return df.loc[lambda x: x.order_id.isin(orders_of_min_size)]
 
+
 df_selected = (
-    df
-    .pipe(push_relevant_dataframe)
+    df.pipe(push_relevant_dataframe)
     .assign(created_at=lambda x: pd.to_datetime(x.created_at))
     .assign(order_date=lambda x: pd.to_datetime(x.order_date).dt.date)
 )
 ```
 
 To create a model, first we have to split the data. The two main considerations we have to acknowledge are: information leakage and class imbalances.
-With this specific data, since we are dealing in some way with time-series data(we have data from 2020 to 2021), it makes sense to do a temporal split so that we respect the chronological order of the data and prevent information leakage. With this in mind, we also ensure that the same user's data is not present in both the training and test set, which would be a problem since we are trying to predict the future behavior of the user.
+With this specific data, since we are dealing in some way with time-series data(we have data from 2020 to 2021), it makes sense to do a temporal split so that we respect the chronological order of the data and prevent information leakage. 
 Regarding, class imbalances, as we are not randomizing the train-test split, we suppose that the class distribution is similar in both sets. If this weren't the case, we could use stratified sampling to ensure that the class distribution is similar in both sets.
 
 
@@ -391,7 +389,7 @@ cumsum_daily_orders = daily_orders.cumsum() / daily_orders.sum()
 
 train_val_cutoff = cumsum_daily_orders[cumsum_daily_orders < 0.7].idxmax()
 val_test_cutoff = cumsum_daily_orders[cumsum_daily_orders < 0.9].idxmax()
-print("Train since:" , cumsum_daily_orders.index.min())
+print("Train since:", cumsum_daily_orders.index.min())
 print("Train until:", train_val_cutoff)
 print("Validation since:", train_val_cutoff)
 print("Validation until:", val_test_cutoff)
@@ -410,7 +408,10 @@ print("Test until:", cumsum_daily_orders.index.max())
 
 ```python
 train_df = df_selected[df_selected.order_date <= train_val_cutoff]
-val_df = df_selected[(df_selected.order_date > train_val_cutoff) & (df_selected.order_date <= val_test_cutoff)]
+val_df = df_selected[
+    (df_selected.order_date > train_val_cutoff)
+    & (df_selected.order_date <= val_test_cutoff)
+]
 test_df = df_selected[df_selected.order_date > val_test_cutoff]
 ```
 
@@ -452,9 +453,11 @@ In order to know if we are following the right path, we will start by creating a
 
 ```python
 def plot_metrics(
-        model_name:str, y_pred:pd.Series, y_test:pd.Series,
-        figure:Tuple[matplotlib.figure.Figure, np.array]=None
-    ):
+    model_name: str,
+    y_pred: pd.Series,
+    y_test: pd.Series,
+    figure: Tuple[matplotlib.figure.Figure, np.array] = None,
+):
     precision_, recall_, _ = precision_recall_curve(y_test, y_pred)
     pr_auc = auc(recall_, precision_)
     fpr, tpr, _ = roc_curve(y_test, y_pred)
@@ -475,12 +478,13 @@ def plot_metrics(
     ax[1].set_ylabel("True Positive Rate")
     ax[1].set_title("ROC curve")
     ax[1].legend(loc="best")
-
 ```
 
 
 ```python
-plot_metrics("Popularity baseline", y_pred=val_df["global_popularity"], y_test=val_df[target])
+plot_metrics(
+    "Popularity baseline", y_pred=val_df["global_popularity"], y_test=val_df[target]
+)
 ```
 
 
@@ -495,8 +499,12 @@ We will be following a increasing complexity approach, so we will start with a s
 
 
 ```python
-def feature_label_split(df: pd.DataFrame, target: str) -> Tuple[pd.DataFrame, pd.Series]:
+def feature_label_split(
+    df: pd.DataFrame, target: str
+) -> Tuple[pd.DataFrame, pd.Series]:
     return df.drop(columns=[target]), df[target]
+
+
 X_train, y_train = feature_label_split(train_df, target)
 X_val, y_val = feature_label_split(val_df, target)
 X_test, y_test = feature_label_split(test_df, target)
@@ -506,7 +514,7 @@ First, let's start a simple logistic model without doing any one hot encoding or
 
 
 ```python
-train_cols = numerical_cols + binary_cols 
+train_cols = numerical_cols + binary_cols
 ```
 
 
@@ -517,14 +525,13 @@ fig1.suptitle("Train metrics")
 fig2, ax2 = plt.subplots(1, 2, figsize=(15, 5))
 fig2.suptitle("Validation metrics")
 lr = Pipeline(
-    steps=[
-        ("scaler", StandardScaler()),
-        ("classifier", LogisticRegression())
-    ]
+    steps=[("scaler", StandardScaler()), ("classifier", LogisticRegression())]
 )
 lr.fit(X_train[train_cols], y_train)
 train_proba = lr.predict_proba(X_train[train_cols])[:, 1]
-plot_metrics("Logistic Regression", y_pred=train_proba, y_test=y_train, figure=(fig1, ax1))
+plot_metrics(
+    "Logistic Regression", y_pred=train_proba, y_test=y_train, figure=(fig1, ax1)
+)
 val_proba = lr.predict_proba(X_val[train_cols])[:, 1]
 plot_metrics("Logistic Regression", val_proba, y_val, figure=(fig2, ax2))
 ```
@@ -551,21 +558,30 @@ fig1.suptitle("Train metrics")
 fig2, ax2 = plt.subplots(1, 2, figsize=(15, 5))
 fig2.suptitle("Validation metrics")
 
-for c in [1e-6,1e-2, 1, 10, 1e3, None]:
+for c in [1e-6, 1e-2, 1, 10, 1e3, None]:
     lr = Pipeline(
-    steps=[
-        ("scaler", StandardScaler()),
-        ("classifier", LogisticRegression(penalty="l2" if c else None, C=c if c else 1.0))
+        steps=[
+            ("scaler", StandardScaler()),
+            (
+                "classifier",
+                LogisticRegression(penalty="l2" if c else None, C=c if c else 1.0),
+            ),
         ]
     )
     lr.fit(X_train[train_cols], y_train)
     train_proba = lr.predict_proba(X_train[train_cols])[:, 1]
-    plot_metrics(f"LR-Ridge; C={c}", y_pred=train_proba, y_test=y_train, figure=(fig1, ax1))
+    plot_metrics(
+        f"LR-Ridge; C={c}", y_pred=train_proba, y_test=y_train, figure=(fig1, ax1)
+    )
     val_proba = lr.predict_proba(X_val[train_cols])[:, 1]
     plot_metrics(f"LR-Ridge; C={c}", val_proba, y_val, figure=(fig2, ax2))
 
-plot_metrics(f"Baseline", y_pred=val_df["global_popularity"], y_test=val_df[target], figure=(fig2, ax2))
-    
+plot_metrics(
+    f"Baseline",
+    y_pred=val_df["global_popularity"],
+    y_test=val_df[target],
+    figure=(fig2, ax2),
+)
 ```
 
 
@@ -592,21 +608,32 @@ fig1.suptitle("Train metrics")
 fig2, ax2 = plt.subplots(1, 2, figsize=(15, 5))
 fig2.suptitle("Validation metrics")
 
-for c in [1e-6,1e-2, 1, 10, 1e3, None]:
+for c in [1e-6, 1e-2, 1, 10, 1e3, None]:
     lr = Pipeline(
-    steps=[
-        ("scaler", StandardScaler()),
-        ("classifier", LogisticRegression(penalty="l1" if c else None, C=c if c else 1.0, solver="saga"))
+        steps=[
+            ("scaler", StandardScaler()),
+            (
+                "classifier",
+                LogisticRegression(
+                    penalty="l1" if c else None, C=c if c else 1.0, solver="saga"
+                ),
+            ),
         ]
     )
     lr.fit(X_train[train_cols], y_train)
     train_proba = lr.predict_proba(X_train[train_cols])[:, 1]
-    plot_metrics(f"LR-Lasso; C={c}", y_pred=train_proba, y_test=y_train, figure=(fig1, ax1))
+    plot_metrics(
+        f"LR-Lasso; C={c}", y_pred=train_proba, y_test=y_train, figure=(fig1, ax1)
+    )
     val_proba = lr.predict_proba(X_val[train_cols])[:, 1]
     plot_metrics(f"LR-Lasso; C={c}", val_proba, y_val, figure=(fig2, ax2))
 
-plot_metrics(f"Baseline", y_pred=val_df["global_popularity"], y_test=val_df[target], figure=(fig2, ax2))
-    
+plot_metrics(
+    f"Baseline",
+    y_pred=val_df["global_popularity"],
+    y_test=val_df[target],
+    figure=(fig2, ax2),
+)
 ```
 
 
@@ -646,25 +673,34 @@ Let's now evaluate the importance of each variable in the model.
 lr = Pipeline(
     steps=[
         ("scaler", StandardScaler()),
-        ("classifier", LogisticRegression(penalty="l2", C=1e-6))
+        ("classifier", LogisticRegression(penalty="l2", C=1e-6)),
     ]
 )
 lr.fit(X_train[train_cols], y_train)
-lr_coeff_l2 = pd.DataFrame({"features": train_cols, "importance": np.abs(lr.named_steps["classifier"].coef_[0]),
-                            "regularization": ["l2"] * len(train_cols)})
+lr_coeff_l2 = pd.DataFrame(
+    {
+        "features": train_cols,
+        "importance": np.abs(lr.named_steps["classifier"].coef_[0]),
+        "regularization": ["l2"] * len(train_cols),
+    }
+)
 lr_coeff_l2 = lr_coeff_l2.sort_values("importance", ascending=False)
 
 lr = Pipeline(
     steps=[
         ("scaler", StandardScaler()),
-        ("classifier", LogisticRegression(penalty="l1", C=1e-4, solver="saga"))
+        ("classifier", LogisticRegression(penalty="l1", C=1e-4, solver="saga")),
     ]
 )
 lr.fit(X_train[train_cols], y_train)
-lr_coeff_l1 = pd.DataFrame({"features": train_cols, "importance": np.abs(lr.named_steps["classifier"].coef_[0]),
-                            "regularization": "l1"})
-lr_coeff_l1= lr_coeff_l1.sort_values("importance", ascending=False)
-
+lr_coeff_l1 = pd.DataFrame(
+    {
+        "features": train_cols,
+        "importance": np.abs(lr.named_steps["classifier"].coef_[0]),
+        "regularization": "l1",
+    }
+)
+lr_coeff_l1 = lr_coeff_l1.sort_values("importance", ascending=False)
 ```
 
 
@@ -677,7 +713,13 @@ order_columns = lr_coeff_l2.sort_values("importance", ascending=False)["features
 
 
 ```python
-sns.barplot(data=lr_coeffs, x="importance", y="features", hue="regularization", order = order_columns)
+sns.barplot(
+    data=lr_coeffs,
+    x="importance",
+    y="features",
+    hue="regularization",
+    order=order_columns,
+)
 ```
 
 
@@ -713,18 +755,33 @@ lrs = [
     Pipeline(
         steps=[
             ("scaler", StandardScaler()),
-            ("classifier", LogisticRegression(penalty="l2", C=1e-6))
+            ("classifier", LogisticRegression(penalty="l2", C=1e-6)),
         ]
     ),
     Pipeline(
         steps=[
             ("scaler", StandardScaler()),
-            ("classifier", LogisticRegression(penalty="l1", C=1e-4, solver="saga"))
+            ("classifier", LogisticRegression(penalty="l1", C=1e-4, solver="saga")),
         ]
-    )
+    ),
+    Pipeline(
+        steps=[
+            ("scaler", StandardScaler()),
+            ("classifier", LogisticRegression(penalty=None)),
+        ]
+    ),
+    Pipeline(
+        steps=[
+            ("scaler", StandardScaler()),
+            (
+                "classifier",
+                LogisticRegression(penalty="elasticnet", solver="saga", l1_ratio=0.5),
+            ),
+        ]
+    ),
 ]
-names = ["LR-Ridge", "LR-Lasso"]
-for name, lr in zip(names,lrs):
+names = ["LR-Ridge", "LR-Lasso", "LR-NoReg", "LR-ElasticNet"]
+for name, lr in zip(names, lrs):
     lr.fit(X_train[important_cols], y_train)
     train_proba = lr.predict_proba(X_train[important_cols])[:, 1]
     plot_metrics(f"{name}", y_pred=train_proba, y_test=y_train, figure=(fig1, ax1))
@@ -733,8 +790,12 @@ for name, lr in zip(names,lrs):
     plot_metrics(f"{name}", val_proba, y_val, figure=(fig2, ax2))
 
 
-
-plot_metrics(f"Baseline", y_pred=val_df["global_popularity"], y_test=val_df[target], figure=(fig2, ax2))
+plot_metrics(
+    f"Baseline",
+    y_pred=val_df["global_popularity"],
+    y_test=val_df[target],
+    figure=(fig2, ax2),
+)
 ```
 
 
@@ -749,7 +810,7 @@ plot_metrics(f"Baseline", y_pred=val_df["global_popularity"], y_test=val_df[targ
     
 
 
-- As shown by the results, we can significantly simplify the model without compromising its performance. The model achieves comparable results to the previous versions that included all features.
+- As shown by the results, we can significantly simplify the model without compromising its performance. The model achieves comparable results to the previous versions that included all features. Also, as we have shown before, further regularization doesn't improve the model.
 
 
 ### Categorical encoding: One hot enconding
@@ -770,11 +831,15 @@ for col in categorical_cols:
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, TargetEncoder
 from sklearn.decomposition import PCA
 from sklearn.compose import ColumnTransformer
+
 categorical_preprocessors = [
     ("drop", "drop"),
     ("ordinal", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)),
-    ("onehot", OneHotEncoder(handle_unknown="ignore",max_categories=15, sparse_output=False)),
-    ("target", TargetEncoder(target_type = "continuous")),
+    (
+        "onehot",
+        OneHotEncoder(handle_unknown="ignore", max_categories=15, sparse_output=False),
+    ),
+    ("target", TargetEncoder(target_type="continuous")),
 ]
 
 fig1, ax1 = plt.subplots(1, 2, figsize=(15, 5))
@@ -788,14 +853,14 @@ for name, categorical_preprocessor in categorical_preprocessors:
     preprocessor = ColumnTransformer(
         transformers=[
             ("num", "passthrough", important_cols),
-            ("cat", categorical_preprocessor, categorical_cols)
+            ("cat", categorical_preprocessor, categorical_cols),
         ]
     )
     lr = Pipeline(
         steps=[
             ("preprocessor", preprocessor),
             ("scaler", StandardScaler()),
-            ("classifier", LogisticRegression(penalty="l2", C=1e-6))
+            ("classifier", LogisticRegression(penalty="l2", C=1e-6)),
         ]
     )
     lr.fit(X_train[extended_cols], y_train)
@@ -803,7 +868,12 @@ for name, categorical_preprocessor in categorical_preprocessors:
     plot_metrics(name, y_pred=train_proba, y_test=y_train, figure=(fig1, ax1))
     val_proba = lr.predict_proba(X_val[extended_cols])[:, 1]
     plot_metrics(name, val_proba, y_val, figure=(fig2, ax2))
-plot_metrics(f"Baseline", y_pred=val_df["global_popularity"], y_test=val_df[target], figure=(fig2, ax2))
+plot_metrics(
+    f"Baseline",
+    y_pred=val_df["global_popularity"],
+    y_test=val_df[target],
+    figure=(fig2, ax2),
+)
 ```
 
 
@@ -820,105 +890,31 @@ plot_metrics(f"Baseline", y_pred=val_df["global_popularity"], y_test=val_df[targ
 
 As there were only two categorical variables, it makes sense that they don't affect the model that much.
 
-Oversampling con SMOTE
+Let's try now to compare the best model we've gotten so far against the test set.
 
 
 ```python
-from imblearn.pipeline import Pipeline as ImblearnPipeline
-from imblearn.over_sampling import SMOTE
 fig1, ax1 = plt.subplots(1, 2, figsize=(15, 5))
-fig1.suptitle("Train metrics")
+fig1.suptitle("Validation metrics")
 
 fig2, ax2 = plt.subplots(1, 2, figsize=(15, 5))
-fig2.suptitle("Validation metrics")
-
-smote_lr = Pipeline(steps=[
-    ("scaler", StandardScaler()),
-    ("smote", SMOTE(random_state=42)),
-    ("classifier", LogisticRegression(penalty="l2", C=1e-6))
-])
-
-smote_lr.fit(X_train[important_cols], y_train)
-train_proba = smote_lr.predict_proba(X_train[important_cols])[:, 1]
-plot_metrics(f"{name}", y_pred=train_proba, y_test=y_train, figure=(fig1, ax1))
-
-val_proba = smote_lr.predict_proba(X_val[important_cols])[:, 1]
-plot_metrics(f"{name}", val_proba, y_val, figure=(fig2, ax2))
-
-
-
-plot_metrics(f"Baseline", y_pred=val_df["global_popularity"], y_test=val_df[target], figure=(fig2, ax2))
+fig2.suptitle("Test metrics")
+lr = Pipeline(
+    steps=[("scaler", StandardScaler()), ("classifier", LogisticRegression())]
+)
+lr.fit(X_train[important_cols], y_train)
+val_proba = lr.predict_proba(X_val[important_cols])[:, 1]
+plot_metrics("Logistic Regression", val_proba, y_val, figure=(fig1, ax1))
+test_proba = lr.predict_proba(X_test[important_cols])[:, 1]
+plot_metrics(
+    "Logistic Regression", y_pred=test_proba, y_test=y_test, figure=(fig2, ax2)
+)
 ```
 
 
-    ---------------------------------------------------------------------------
-
-    TypeError                                 Traceback (most recent call last)
-
-    Cell In[45], line 15
-          7 fig2.suptitle("Validation metrics")
-          9 smote_lr = Pipeline(steps=[
-         10     ("scaler", StandardScaler()),
-         11     ("smote", SMOTE(random_state=42)),
-         12     ("classifier", LogisticRegression(penalty="l2", C=1e-6))
-         13 ])
-    ---> 15 smote_lr.fit(X_train[important_cols], y_train)
-         16 train_proba = smote_lr.predict_proba(X_train[important_cols])[:, 1]
-         17 plot_metrics(f"{name}", y_pred=train_proba, y_test=y_train, figure=(fig1, ax1))
-
-
-    File ~/.cache/pypoetry/virtualenvs/zrive-ds-bkpyjwcA-py3.11/lib/python3.11/site-packages/sklearn/base.py:1351, in _fit_context.<locals>.decorator.<locals>.wrapper(estimator, *args, **kwargs)
-       1344     estimator._validate_params()
-       1346 with config_context(
-       1347     skip_parameter_validation=(
-       1348         prefer_skip_nested_validation or global_skip_validation
-       1349     )
-       1350 ):
-    -> 1351     return fit_method(estimator, *args, **kwargs)
-
-
-    File ~/.cache/pypoetry/virtualenvs/zrive-ds-bkpyjwcA-py3.11/lib/python3.11/site-packages/sklearn/pipeline.py:471, in Pipeline.fit(self, X, y, **params)
-        428 """Fit the model.
-        429 
-        430 Fit all the transformers one after the other and sequentially transform the
-       (...)
-        468     Pipeline with fitted steps.
-        469 """
-        470 routed_params = self._check_method_params(method="fit", props=params)
-    --> 471 Xt = self._fit(X, y, routed_params)
-        472 with _print_elapsed_time("Pipeline", self._log_message(len(self.steps) - 1)):
-        473     if self._final_estimator != "passthrough":
-
-
-    File ~/.cache/pypoetry/virtualenvs/zrive-ds-bkpyjwcA-py3.11/lib/python3.11/site-packages/sklearn/pipeline.py:388, in Pipeline._fit(self, X, y, routed_params)
-        385 def _fit(self, X, y=None, routed_params=None):
-        386     # shallow copy of steps - this should really be steps_
-        387     self.steps = list(self.steps)
-    --> 388     self._validate_steps()
-        389     # Setup the memory
-        390     memory = check_memory(self.memory)
-
-
-    File ~/.cache/pypoetry/virtualenvs/zrive-ds-bkpyjwcA-py3.11/lib/python3.11/site-packages/sklearn/pipeline.py:258, in Pipeline._validate_steps(self)
-        254         continue
-        255     if not (hasattr(t, "fit") or hasattr(t, "fit_transform")) or not hasattr(
-        256         t, "transform"
-        257     ):
-    --> 258         raise TypeError(
-        259             "All intermediate steps should be "
-        260             "transformers and implement fit and transform "
-        261             "or be the string 'passthrough' "
-        262             "'%s' (type %s) doesn't" % (t, type(t))
-        263         )
-        265 # We allow last estimator to be None as an identity transformation
-        266 if (
-        267     estimator is not None
-        268     and estimator != "passthrough"
-        269     and not hasattr(estimator, "fit")
-        270 ):
-
-
-    TypeError: All intermediate steps should be transformers and implement fit and transform or be the string 'passthrough' 'SMOTE(random_state=42)' (type <class 'imblearn.over_sampling._smote.base.SMOTE'>) doesn't
+    
+![png](groceries_model_files/groceries_model_43_0.png)
+    
 
 
 
@@ -927,8 +923,4 @@ plot_metrics(f"Baseline", y_pred=val_df["global_popularity"], y_test=val_df[targ
     
 
 
-
-    
-![png](groceries_model_files/groceries_model_43_2.png)
-    
-
+As we have seen, the model is not overfitting (we're getting the same results in the validation and test datasets), so we can trust the results we are getting from the validation set.
